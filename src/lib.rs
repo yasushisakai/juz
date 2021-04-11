@@ -1,9 +1,3 @@
 mod blockchain;
 
-pub use blockchain::{
-    BlockChain,
-    Transaction,
-    TransactionPartial,
-    Block
-};
-
+pub use blockchain::{Block, BlockChain, Transaction, TransactionPartial};

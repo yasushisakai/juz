@@ -1,6 +1,6 @@
 use crate::State;
 use actix_web::client::Client;
-use actix_web::{get, post, web, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
 use juz::{Block, BlockChain, Transaction, TransactionPartial};
 use std::collections::BTreeMap;
 
@@ -8,6 +8,18 @@ use std::collections::BTreeMap;
 pub async fn get_all(state: web::Data<State>) -> impl Responder {
     let blockchain = state.blockchain.lock().unwrap();
     web::Json(blockchain.to_owned())
+}
+
+#[get("block/{bloch_hash}")]
+pub async fn get_block(state: web::Data<State>, block_hash: web::Path<String>) -> HttpResponse {
+    let block_hash = block_hash.into_inner();
+
+    let blockchain = state.blockchain.lock().unwrap();
+
+    match blockchain.get_block(&block_hash) {
+        None => HttpResponse::NotFound().body("not found"),
+        Some(block) => HttpResponse::Ok().json(block),
+    }
 }
 
 #[post("transaction/")]
@@ -19,6 +31,28 @@ pub async fn add_transaction(
     let mut blockchain = state.blockchain.lock().unwrap();
     blockchain.add_new_transaction(&data);
     web::Json(data)
+}
+
+#[get("transaction/{transaction_id}")]
+pub async fn get_transaction(
+    state: web::Data<State>,
+    transaction_id: web::Path<String>,
+) -> HttpResponse {
+    let txid = transaction_id.into_inner();
+    let blockchain = state.blockchain.lock().unwrap();
+
+    match blockchain.get_transaction(&txid) {
+        None => HttpResponse::NotFound().body("not found"),
+        Some(bt) => HttpResponse::Ok().json(bt),
+    }
+}
+
+#[get("address/{address_id}")]
+pub async fn get_address(state: web::Data<State>, address_id: web::Path<String>) -> impl Responder {
+    let aid = address_id.into_inner();
+    let blockchain = state.blockchain.lock().unwrap();
+    let address_info = blockchain.get_address(&aid);
+    web::Json(address_info)
 }
 
 #[post("transaction/broadcast/")]
@@ -177,19 +211,18 @@ pub async fn register_node_bulk(
 pub async fn consensus(
     state: web::Data<State>,
     node_urls: web::Json<BTreeMap<String, String>>,
-    )-> impl Responder {
-   
+) -> impl Responder {
     let peers = node_urls.into_inner();
     let mut blockchain = state.blockchain.lock().unwrap();
 
-    let mut max_chain_length = blockchain.length(); 
+    let mut max_chain_length = blockchain.length();
     let mut max_block_chain: Option<BlockChain> = None;
-    
+
     for url in peers.keys() {
         let endpoint = format!("{}/blockchain/", url);
         // FIXME: dangerous unwrapping
         let mut response = Client::new().get(endpoint).send().await.unwrap();
-        let other_bc: BlockChain = response.json().await.unwrap(); 
+        let other_bc: BlockChain = response.json().await.unwrap();
         if other_bc.length() > max_chain_length {
             max_chain_length = other_bc.length();
             max_block_chain = Some(other_bc.to_owned());
@@ -197,7 +230,7 @@ pub async fn consensus(
     }
 
     if max_chain_length != blockchain.length() {
-        if let Some(bc) =  max_block_chain {
+        if let Some(bc) = max_block_chain {
             blockchain.set_chain(bc.get_chain());
             blockchain.set_transactions(bc.new_transactions);
             return "replaced".to_string();

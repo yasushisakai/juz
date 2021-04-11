@@ -38,9 +38,7 @@ pub struct Block {
 }
 
 impl Block {
-
     pub fn genesis() -> Self {
-
         let nonce = 100;
         let transactions = Vec::new();
         let prev_hash = "0".to_string();
@@ -58,7 +56,6 @@ impl Block {
             hash: GENESIS_HASH.to_string(),
             prev_hash,
         }
-
     }
 
     pub fn block_data(&self) -> BlockData {
@@ -84,13 +81,12 @@ pub struct Transaction {
     recipient: String,
 }
 
-
 impl Transaction {
-    pub fn new_reward(id: &str) ->Self {
-        let partial = TransactionPartial{
+    pub fn new_reward(id: &str) -> Self {
+        let partial = TransactionPartial {
             amount: 12.5,
             sender: "00".into(),
-            recipient: id.into()
+            recipient: id.into(),
         };
 
         (&partial).into()
@@ -112,7 +108,6 @@ impl From<TransactionPartial> for Transaction {
     }
 }
 
-
 impl From<&TransactionPartial> for Transaction {
     fn from(partial: &TransactionPartial) -> Self {
         let id: String = Uuid::new_v4()
@@ -129,6 +124,12 @@ impl From<&TransactionPartial> for Transaction {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct AddressInfo {
+    transactions: Vec<Transaction>,
+    balance: f64,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct BlockChain {
     chain: Vec<Block>,
     pub new_transactions: Vec<Transaction>,
@@ -137,7 +138,7 @@ pub struct BlockChain {
 impl BlockChain {
     pub fn new() -> Self {
         let mut bc = Self::default();
-        
+
         let genesis = Block::genesis();
         bc.push_block(genesis);
         log::info!("blockchain generated");
@@ -146,7 +147,7 @@ impl BlockChain {
     }
 
     pub fn length(&self) -> usize {
-       self.chain.len() 
+        self.chain.len()
     }
 
     pub fn get_chain(&self) -> Vec<Block> {
@@ -157,8 +158,56 @@ impl BlockChain {
         self.chain = chain;
     }
 
+    pub fn get_block(&self, block_hash: &str) -> Option<Block> {
+        self.chain
+            .iter()
+            .find(|b| b.hash == block_hash)
+            .and_then(|b| Some(b.to_owned()))
+    }
+
     pub fn set_transactions(&mut self, transactions: Vec<Transaction>) {
         self.new_transactions = transactions;
+    }
+
+    pub fn get_transaction(&self, transaction_id: &str) -> Option<(Block, Transaction)> {
+        for b in self.chain.iter() {
+            let t = b.transactions.iter().find(|t| t.id == transaction_id);
+            if let Some(tx) = t {
+                let transaction = tx.to_owned();
+                let block = b.to_owned();
+                return Some((block, transaction));
+            }
+        }
+
+        None
+    }
+
+    pub fn get_address(&self, address_id: &str) -> AddressInfo {
+        let mut transactions: Vec<Transaction> = Vec::new();
+
+        for b in self.chain.iter() {
+            let mut temp_tx: Vec<Transaction> = b
+                .transactions
+                .iter()
+                .filter(|t| t.sender == address_id || t.recipient == address_id)
+                .map(|t| t.to_owned())
+                .collect();
+            transactions.append(&mut temp_tx);
+        }
+
+        let mut balance = 0.0;
+        for tx in transactions.iter() {
+            if tx.recipient == address_id {
+                balance += tx.amount;
+            } else if tx.sender == address_id {
+                balance -= tx.amount;
+            }
+        }
+
+        AddressInfo {
+            transactions,
+            balance,
+        }
     }
 
     pub fn verify_block(&self, block: &Block) -> bool {
@@ -178,11 +227,10 @@ impl BlockChain {
     }
 
     pub fn verify(&self) -> bool {
-
         // check if the hashes match
         for i in 1..self.chain.len() {
             let block = &self.chain[i];
-            let p_block = &self.chain[i-1];
+            let p_block = &self.chain[i - 1];
             let block_data = block.block_data();
             let hash = hash_block(&p_block.hash, block.nonce, &block_data);
 
@@ -191,15 +239,15 @@ impl BlockChain {
             }
 
             if hash != block.hash {
-                return false
+                return false;
             }
         }
-        
+
         if self.chain[0] != Block::genesis() {
-            return false
+            return false;
         }
 
-        true 
+        true
     }
 
     pub fn create_new_block(&self, nonce: u32) -> Block {
